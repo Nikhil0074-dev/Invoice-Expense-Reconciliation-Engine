@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Invoice Reconciliation</title>
+<style>
+:root{--bg:#eef1ed;--ink:#17283a;--mut:#5d6b78;--line:#cfd7d0;--card:#fbfcfa;--ok:#0f6b63;--warn:#a8540b;--bad:#9b2c2c}
+@media (prefers-color-scheme:dark){:root{--bg:#121a21;--ink:#e3e9ee;--mut:#9aa8b4;--line:#2c3a45;--card:#1a242d;--ok:#4cc0b3;--warn:#e0953f;--bad:#e27b7b}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,Segoe UI,sans-serif}
+header{padding:20px 28px 0}h1{font:600 24px Georgia,serif;margin:0}header p{margin:2px 0 14px;color:var(--mut)}
+nav{display:flex;gap:4px;padding:0 28px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+nav button{background:none;border:0;padding:10px 14px;color:var(--mut);cursor:pointer;font:inherit;border-bottom:3px solid transparent}
+nav button.on{color:var(--ink);border-color:var(--ok);font-weight:600}
+main{padding:22px 28px;max-width:1150px}section{display:none}section.on{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:6px;padding:14px 16px;margin-bottom:12px}
+.drop{border:2px dashed var(--line);padding:26px;text-align:center;border-radius:6px;color:var(--mut)}.drop.hot{border-color:var(--ok);color:var(--ink)}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--mut);font-weight:500}
+button.b{background:var(--ok);color:#fff;border:0;border-radius:4px;padding:6px 12px;cursor:pointer;font:inherit}button.b.g{background:none;color:var(--ink);border:1px solid var(--line)}
+input{font:inherit;padding:5px 7px;border:1px solid var(--line);border-radius:4px;background:var(--bg);color:var(--ink);width:100%}
+.tag{display:inline-block;padding:1px 8px;border-radius:10px;font-size:12px;border:1px solid var(--line)}
+.strong,.approved,.awaiting_review{color:var(--ok)}.possible,.warn,.open{color:var(--warn)}.weak,.error,.failed{color:var(--bad)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}label{font-size:12px;color:var(--mut)}
+pre{background:var(--bg);padding:10px;overflow:auto;border-radius:4px;font-size:13px}.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+#msg{position:fixed;right:20px;bottom:20px;background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;display:none}
+</style></head><body>
+<header><h1>Invoice &amp; Expense Reconciliation</h1><p>Upload invoices, match them to bank payments, approve, export.</p></header>
+<nav id="nav"></nav><main>
+<section id="documents"><div class="drop" id="drop">Drop PDF, PNG or JPEG invoices here, or <input type="file" id="file" multiple accept=".pdf,.png,.jpg,.jpeg" style="width:auto"></div><div id="docs"></div></section>
+<section id="review"><div id="invs"></div></section>
+<section id="bank"><div class="card row"><input type="file" id="csv" accept=".csv" style="width:auto"><span>Currency if missing: <input id="cur" value="INR" style="width:70px"></span><span style="color:var(--mut)">Dates read as day/month/year</span></div><div id="txns"></div></section>
+<section id="reconcile"><div class="row" style="margin-bottom:12px"><button class="b" id="run">Find matches</button><span style="color:var(--mut)">Suggestions only. Nothing is matched until you approve it.</span></div><div id="matches"></div></section>
+<section id="duplicates"><div id="dups"></div></section>
+<section id="export"><div class="row" style="margin-bottom:12px"><button class="b" id="mkexp">Create CSV from approved invoices</button></div><div id="exp"></div></section>
+<section id="audit"><div id="aud"></div></section>
+</main><div id="msg"></div>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const TABS=[["documents","Documents"],["review","Review"],["bank","Bank"],["reconcile","Matches"],["duplicates","Duplicates"],["export","Export"],["audit","History"]];
+function toast(t){const m=$("#msg");m.textContent=t;m.style.display="block";setTimeout(()=>m.style.display="none",3500)}
+async function api(u,o={}){const r=await fetch(u,o);if(!r.ok){let d;try{d=(await r.json()).detail}catch{d=r.statusText}throw new Error(typeof d==="string"?d:JSON.stringify(d))}return r}
+const post=(u,b)=>api(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b||{})}).then(r=>r.json());
+async function guard(f){try{await f()}catch(e){toast(e.message)}}
+$("#nav").innerHTML=TABS.map(([k,l])=>`<button data-k="${k}">${l}</button>`).join("");
+function show(k){document.querySelectorAll("section").forEach(s=>s.classList.toggle("on",s.id===k));document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.k===k));location.hash=k;load(k)}
+$("#nav").onclick=e=>e.target.dataset.k&&show(e.target.dataset.k);
+async function upload(files){for(const f of files){const fd=new FormData();fd.append("file",f);await guard(async()=>{const r=await (await api("/api/documents",{method:"POST",body:fd})).json();toast(r.status==="failed"?`${f.name}: ${r.error}`:`${f.name}: read via ${r.method}`)})}load("documents")}
+$("#file").onchange=e=>upload(e.target.files);
+const dz=$("#drop");dz.ondragover=e=>{e.preventDefault();dz.classList.add("hot")};dz.ondragleave=()=>dz.classList.remove("hot");dz.ondrop=e=>{e.preventDefault();dz.classList.remove("hot");upload(e.dataTransfer.files)};
+$("#csv").onchange=e=>guard(async()=>{const fd=new FormData();fd.append("file",e.target.files[0]);const r=await (await api("/api/bank/import?currency="+encodeURIComponent($("#cur").value),{method:"POST",body:fd})).json();toast(`Imported ${r.imported}, skipped ${r.skipped_duplicates} repeats, ${r.errors.length} bad rows`);load("bank")});
+$("#run").onclick=()=>guard(async()=>{const r=await post("/api/reconcile/run");toast(r.suggestions+" suggestions");load("reconcile")});
+$("#mkexp").onclick=()=>guard(async()=>{const r=await post("/api/exports");toast(`Exported ${r.count} records`);load("export")});
+const T=(h,rows)=>rows.length?`<div class="card" style="overflow:auto"><table><tr>${h.map(x=>`<th>${x}</th>`).join("")}</tr>${rows.join("")}</table></div>`:`<div class="card" style="color:var(--mut)">Nothing here yet.</div>`;
+const F=["supplier_raw","invoice_number","invoice_date","currency","subtotal","tax","grand_total"];
+async function load(k){await guard(async()=>{
+ if(k==="documents"){const d=await (await api("/api/documents")).json();$("#docs").innerHTML=T(["File","Type","Read by","Status","Uploaded"],d.map(x=>`<tr><td>${esc(x.filename)}</td><td>${x.kind}</td><td>${esc(x.method||"")}</td><td class="${x.status}">${x.status}${x.error?": "+esc(x.error):""}</td><td>${x.uploaded_at}</td></tr>`))}
+ if(k==="review"){const d=await (await api("/api/invoices")).json();$("#invs").innerHTML=d.length?d.map(i=>`<div class="card" data-id="${i.id}"><div class="row"><b>Invoice #${i.id}</b><span class="tag ${i.status==="approved"?"approved":"warn"}">${i.status.replace("_"," ")}</span>${i.flags.map(f=>`<span class="tag ${f.severity}" title="${esc(f.message)}">${esc(f.message)}</span>`).join("")}</div><div class="grid" style="margin:10px 0">${F.map(f=>`<div><label>${f.replace("_raw","").replace("_"," ")}</label><input data-f="${f}" value="${esc(i[f])}" ${i.status==="approved"?"disabled":""}></div>`).join("")}</div>${i.line_items.length?`<div style="color:var(--mut);font-size:13px">${i.line_items.length} line item(s): ${i.line_items.map(l=>esc(l.description)+" "+l.line_total).join("; ")}</div>`:""}<div class="row" style="margin-top:10px"><a href="/api/documents/${i.document_id}/file" target="_blank">Open original</a>${i.status==="approved"?"":`<button class="b g" data-a="save">Save corrections</button><input data-r placeholder="Reason, if approving with warnings" style="max-width:280px"><button class="b" data-a="approve">Approve</button>`}</div></div>`).join(""):T([],[])}
+ if(k==="bank"){const d=await (await api("/api/bank/transactions")).json();$("#txns").innerHTML=T(["Date","Description","Amount","Reference","Status"],d.map(t=>`<tr><td>${t.tx_date}</td><td>${esc(t.description)}</td><td>${t.currency} ${t.amount}</td><td>${esc(t.reference||t.ext_id||"")}</td><td class="${t.reconciled?"approved":""}">${t.reconciled?"reconciled":"open"}</td></tr>`))}
+ if(k==="reconcile"){const d=await (await api("/api/reconcile/matches")).json();$("#matches").innerHTML=d.length?d.map(m=>{const e=m.evidence;return`<div class="card"><div class="row"><b>${esc(m.supplier_raw)} ${esc(m.invoice_number)}</b> (${m.currency} ${m.grand_total}) &rarr; ${esc(m.description)} (${m.amount})<span class="tag ${m.band}">${m.band} ${m.score}</span><span class="tag ${m.status==="approved"?"approved":""}">${m.status}</span></div><div style="color:var(--mut);font-size:13px;margin:6px 0">Amount ${e.amount.exact?"matches exactly":"differs"}. Bank text ${e.reference.found_in_bank_text?"contains the invoice number":"does not contain the invoice number"}. Supplier similarity ${Math.round((e.supplier?.similarity||0)*100)}%.${e.date?` Dates ${e.date.days_apart} days apart.`:""}${e.warning?` <b class="warn">${esc(e.warning)}</b>`:""}</div>${m.status==="suggested"?`<button class="b" data-m="${m.id}" data-a="approve">Approve match</button> <button class="b g" data-m="${m.id}" data-a="reject">Reject</button>`:""}</div>`}).join(""):T([],[])}
+ if(k==="duplicates"){const d=await (await api("/api/duplicates")).json();$("#dups").innerHTML=d.length?d.map(x=>`<div class="card"><div class="row"><b>${x.dtype.replace(/_/g," ")}</b><span class="tag ${x.status==="open"?"open":""}">${x.status.replace("_"," ")}</span></div><div>${esc(x.file_a)} looks like ${esc(x.file_b)}</div><div style="color:var(--mut);font-size:13px">${esc(x.evidence.note||"")}</div>${x.status==="open"?`<div class="row" style="margin-top:8px"><input data-n placeholder="Note (optional)" style="max-width:260px"><button class="b" data-d="${x.id}" data-r="confirmed_duplicate">It is a duplicate</button><button class="b g" data-d="${x.id}" data-r="distinct">Different expense</button></div>`:""}</div>`).join(""):T([],[])}
+ if(k==="export"){const [p,l]=await Promise.all([api("/api/exports/preview").then(r=>r.json()),api("/api/exports").then(r=>r.json())]);$("#exp").innerHTML=`<div class="card"><b>Preview (${p.count} approved invoice${p.count==1?"":"s"} waiting)</b><pre>${esc(p.csv)}</pre>${p.errors.length?`<div class="warn">${p.errors.length} record(s) skipped for missing fields</div>`:""}</div>`+T(["Created","Records","File"],l.map(x=>`<tr><td>${x.created_at}</td><td>${x.record_count}</td><td><a href="/api/exports/${x.id}/download">${esc(x.filename)}</a></td></tr>`))}
+ if(k==="audit"){const d=await (await api("/api/audit")).json();$("#aud").innerHTML=T(["Time","Action","Item","Detail"],d.map(a=>`<tr><td>${a.ts}</td><td>${a.action}</td><td>${a.resource} ${a.rid}</td><td style="font-size:12px;color:var(--mut)">${esc(a.detail).slice(0,140)}</td></tr>`))}
+})}
+document.addEventListener("click",e=>{const t=e.target;
+ if(t.dataset.m)guard(async()=>{await post(`/api/reconcile/matches/${t.dataset.m}/${t.dataset.a}`);load("reconcile")});
+ if(t.dataset.d)guard(async()=>{await post(`/api/duplicates/${t.dataset.d}/resolve`,{resolution:t.dataset.r,note:t.parentElement.querySelector("[data-n]").value});load("duplicates")});
+ if(t.dataset.a==="save"||(t.dataset.a==="approve"&&t.closest("[data-id]")))guard(async()=>{const c=t.closest("[data-id]"),id=c.dataset.id,b={};c.querySelectorAll("[data-f]").forEach(i=>b[i.dataset.f]=i.value);
+  await api("/api/invoices/"+id,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});
+  if(t.dataset.a==="approve"){await post(`/api/invoices/${id}/approve`,{reason:c.querySelector("[data-r]").value});toast("Approved")}else toast("Saved");load("review")})});
+show(TABS.map(t=>t[0]).includes(location.hash.slice(1))?location.hash.slice(1):"documents");
+</script></body></html>

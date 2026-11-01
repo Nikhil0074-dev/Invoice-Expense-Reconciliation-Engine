@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+python-multipart
+pypdf
+pypdfium2
+pytesseract
+pillow
+rapidfuzz
+# only for tests, sample data and screenshots:
+pytest
+httpx
+reportlab
+playwright

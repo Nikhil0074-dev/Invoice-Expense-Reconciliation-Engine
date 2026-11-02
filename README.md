@@ -4,6 +4,8 @@ A local-first MVP for reviewing invoices and receipts, importing bank transactio
 
 > **Important:** This project is not an accounting system or a fraud detector. It has no authentication or organization separation. Use synthetic or otherwise appropriate data, keep the service on a trusted machine, and verify every extraction, match, and export before relying on it.
 
+![Workflow](diagram.png)
+
 ![screenshots](docs/screenshots/01_documents.png)
 ![screenshots](docs/screenshots/02_review.png)
 ![screenshots](docs/screenshots/03_bank.png)
